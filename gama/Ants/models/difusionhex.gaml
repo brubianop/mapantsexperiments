@@ -49,20 +49,22 @@ global {
     // -----------------------------------------------------------------
     reflex diffusion_dynamics {
         
-        // STEP 1: EMISSION (Source)
-        // Food sources constantly emit chemical into their current cell.
-        // The emission is proportional to the food amount (size).
-        ask cells where (each.food > 0) {
-            // We multiply by 100.0 to create a strong concentration gradient
-            chemical <- food * 100.0; 
-        }
-        
         // STEP 2: DIFFUSION (Spread)
         // GAMA's optimized algorithm spreads the 'chemical' variable 
         // from cells with high values to neighbors with low values.
         diffuse var: chemical on: cells propagation: diffusion proportion: diffusion_rate;
         
-
+        
+        
+        // STEP 1: EMISSION (Source)
+        // Food sources constantly emit chemical into their current cell.
+        // The emission is proportional to the food amount (size).
+        ask cells where (each.food > 0) {
+            // We multiply by 100.0 to create a strong concentration gradient
+            chemical <- chemical + food * 100.0; 
+        }
+        
+        
         // STEP 3: EVAPORATION (Decay)
         // The scent dissipates over time to prevent infinite accumulation.
         ask cells {
@@ -89,9 +91,9 @@ grid cells width: grid_size height: grid_size neighbors: 6 { //#hex world
    // Helper action to determine cell color based on state
     rgb calculate_color {
     	
-    	if (self distance_to location({25,25,0}) > 24) {
+    	/*if (self distance_to location({25,25,0}) > 24) {
             return #black;
-        }
+        }*/
     	
         // --- NUEVO: Condición para resaltar la celda específica ---
         if (grid_x = 17 and grid_y = 17) {

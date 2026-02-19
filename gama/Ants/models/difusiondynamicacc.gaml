@@ -1,83 +1,171 @@
 /**
-* Name: difusiondynamicacc
-* Based on the internal empty template. 
-* Author: Arles
-* Tags: 
+* Name: Scent Diffusion Model
+* Author: [Your Name / Team]
+* Description: Simulates the emission of a chemical scent from food sources, 
+* its diffusion through the environment, and its evaporation over time.
 */
 
+model ScentDiffusion
 
-model difusiondynamicacc
-
-/* Insert your model definition here */
+import "scenarios.gaml"
 
 global {
-    float diffusion_rate <- 0.6 min: 0.0 max: 1.0;
-    // Mantenemos evaporación en 0 para un ambiente totalmente encerrado
+    // -----------------------------------------------------------------
+    // PHYSICAL PARAMETERS
+    // -----------------------------------------------------------------
+    
+    // Controls how fast the scent spreads to neighbors (0.0 to 1.0)
+    float diffusion_rate <- 0.8 min: 0.0 max: 1.0;
+    
+    // Controls how fast the scent disappears from the environment (0.0 to 1.0)
+    // Low values (e.g., 0.005) allow the scent to travel further.
     float evaporation_rate <- 0.0 min: 0.0 max: 1.0; 
-    int grid_size <- 50;
+    
+    // Grid dimensions
+    int grid_size <- 50; 
     geometry shape <- square(grid_size);
+    
+    
+	// Parámetro para elegir el escenario desde la interfaz
+    string scenario_type <- "Cross" among: ["North", "Cross", "Circle"];
 
+    // -----------------------------------------------------------------
+    // INITIALIZATION
+    // -----------------------------------------------------------------
     init {
-        write "Iniciando simulación de ambiente cerrado...";
-        // Fuente de olor constante
+    	if (scenario_type = "North") { do set_one_point_north; }
+        if (scenario_type = "Cross") { do set_cross; }
+        if (scenario_type = "Circle") { do set_circle; }
+        /*write "Initializing simulation environment...";
+        
+        // Place food sources at specific coordinates [x, y]
+        // Scenario: Two sources with different sizes (intensities)
+        
+        // Standard food source (Size 1.0) at center
         ask cells[25, 25] { 
-            food <- 5.0; // Reducimos un poco el valor base porque ahora se acumula
+            food <- 10.0; 
         } 
+        
+        // Large food source (Size 2.0) at the bottom-left
+        // This source will emit a stronger scent.
+        ask cells[10, 10] { 
+            food <- 20.0; 
+        } */
     }
 
     reflex diffusion_dynamics {
+    	
         // CAMBIO 1: EMISIÓN ACUMULATIVA
         ask cells where (each.food > 0) {
             // Usamos += para que el olor se sume en cada ciclo en lugar de resetearse
-            chemical <- chemical + food*100; 
+            chemical <- food*10; 
         }
         
         // STEP 2: DIFFUSION
-        diffuse var: chemical on: cells propagation: diffusion proportion: diffusion_rate;
-
+        //diffuse var: chemical on: cells propagation: diffusion proportion: diffusion_rate;
+        // 2. DIFUSIÓN MANUAL (Cálculo del promedio de vecinos como en NetLogo)
+   		 // Usamos 'temp_chemical' para que el cálculo de una celda no afecte a la siguiente en el mismo ciclo
+    	ask cells {
+        	float promedio_vecinos <- neighbors mean_of (each.chemical);
+        // La fórmula de tu NetLogo: set chemical chemical + diffusion-rate * ( promedio-vecinos - chemical )
+       		 new_chemical <- chemical + diffusion_rate * (promedio_vecinos - chemical);
+    	}
+	    
+	    ask cells{
+	    	chemical <- new_chemical;
+	        
         // STEP 3: EVAPORATION
-        if (evaporation_rate > 0) {
-            ask cells {
-                chemical <- chemical * (1 - evaporation_rate);
-            }
-        }
+		        if (evaporation_rate > 0) {
+		            ask cells {
+		            	
+		                chemical <- chemical * (1 - evaporation_rate);
+		            }
+		        }
+		}
+		 
     }
 } 
 
-grid cells width: grid_size height: grid_size neighbors: 6 {
-    float chemical <- 0.0;
-    float food <- 0.0;
+// -----------------------------------------------------------------
+// GRID ENVIRONMENT (The Patches)
+// -----------------------------------------------------------------
+grid cells width: grid_size height: grid_size neighbors: 6 { //#hex world
+    // State variables
+    float chemical <- 0.0;  // The scent intensity
+    float new_chemical <- 0.0;  // To store temporal chemical
+    float food <- 0.0;      // Amount of food (0 if empty)
+
+    // -----------------------------------------------------------------
+    // VISUALIZATION LOGIC (Heatmap)
+    // -----------------------------------------------------------------
+    // 'update' forces the color to be recalculated every simulation step.
     rgb color <- #black update: calculate_color();
     
+  
+   // Helper action to determine cell color based on state
     rgb calculate_color {
-        // CAMBIO 2: ELIMINAR EL CÍRCULO NEGRO (MÁSCARA)
-        // Se elimina la condición de "distance_to > 24" para permitir ver todo el ambiente.
+    	
+    	/*if (self distance_to location({25,25,0}) > 24) {
+            return #black;
+        }*/
+    	
+        // --- NUEVO: Condición para resaltar la celda específica ---
+        if (grid_x = 17 and grid_y = 17) {
+            return #yellow;
+        }
+        // ----------------------------------------------------------
 
-        if (grid_x = 17 and grid_y = 17) { return #yellow; }
-
-        if (food > 0) { return #red; } 
-        
-        if (chemical > 0) { 
-            // CAMBIO 3: AJUSTE DE VISUALIZACIÓN
-            // Usamos un multiplicador menor para que el degradado se vea mientras se llena el cuarto
-            return hsb(0.6, 1.0, min(1.0, chemical / 10.0)); 
+        if (food > 0) {
+            // Food is always RED
+            return #red;
         } 
-        return #black;
+        else if //(chemical > 0.001) {
+            // Scent trail visualization
+            //return hsb(0.6, 1.0, min(1.0, chemical * 2.0));
+        //}
+        		(chemical > 0) { 
+    		return hsb(0.6, 1.0, min(1.0, chemical * 100.0)); // Multiplicamos por mucho para verlo
+		} 
+        else {
+            // Empty space is BLACK
+            return #black;
+        }
     }
 }
 
-experiment MainExperiment type: gui {
+// -----------------------------------------------------------------
+// EXPERIMENT / GUI
+// -----------------------------------------------------------------
+experiment MainExperimentNetDiff type: gui {
+    
+    // Define inputs accessible via the UI
+    // The 'parameter' keyword connects the UI slider to the global variable
     parameter "Diffusion Speed" var: diffusion_rate;
     parameter "Evaporation Speed" var: evaporation_rate;
+	parameter "Scenario" var: scenario_type;
+	
     output {
+        // Main Map Display
+        // Background is dark gray to ensure contrast with the black grid
         display "Environment" background: rgb(20, 20, 20) {
             grid cells;
         }
+        
+        // Optional: Chart to track total chemical amount in the system
+        /*display "Statistics" {
+            chart "Total Scent in Air" type: series {
+                data "Sum of Chemical" value: sum(cells collect each.chemical) color: #cyan;
+            }
+        }*/
         display "Grafica del Centro" {
             chart "Smell at [17,17]" type: series {
                 data "Intensidad" value: cells[17,17].chemical color: #yellow;
             }
         }
+        
+        // Monitor numérico para ver el valor exacto
         monitor "Valor Exacto en [17,17]" value: cells[17,17].chemical;
+        monitor "Valor Exacto en [25,25]" value: cells[25,25].chemical;
+        monitor "Valor Exacto en [25,26]" value: cells[25,26].chemical;
     }
 }
