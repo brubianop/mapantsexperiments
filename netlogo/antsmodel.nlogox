@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<model version="NetLogo 7.0.2" snapToGrid="false">
+<model version="NetLogo 7.0.3" snapToGrid="false">
   <code><![CDATA[extensions [palette]
 
 
@@ -32,6 +32,7 @@ ants-own [
 
 patches-own [
   chemical                ;; amount of chemical
+  temp                ;; Temporal pleceholder for updates
   ; chemical2             ;; amount of chemical on patch 2
   ;chemical1             ;; amount of chemical on patch 1
   food                 ;; amount of food on this patch (0, 1, or 2)
@@ -167,6 +168,9 @@ to setup-patches
       map-selection = "triangle"  [ set-polygon 3 ]
       map-selection = "square"  [ set-polygon 4 ]
       map-selection = "pentagon"  [ set-polygon 5 ]
+      map-selection = "test-gaussian-diffusion"    [ test-gaussian-diffusion ]
+      map-selection = "test-von-neumann-diffusion" [ test-von-neumann-diffusion ]
+      map-selection = "test-moore-diffusion"       [ test-moore-diffusion ]
       [ set-diag ]
     )
 end
@@ -268,7 +272,8 @@ to go  ;; forever button
   if release-ants-round > 0 and ticks = release-ants-round [ add-ants ]
   set green-patches sum [food] of patches with [pcolor = green]
   ask ants
-  [ if who >= ticks [ stop ] ;; delay initial departure
+  [ 
+    if who >= ticks [ stop ] ;; delay initial departure
     ifelse color = cyan
     [ look-for-food  ]       ;; not carrying food? look for it
     [ return-to-nest ]       ;; carrying food? take it back to nest
@@ -290,28 +295,47 @@ to go  ;; forever button
 
   ifelse  show-values = True  [  mostrar-valores ][ ocultar-valores ]
 
-  if block-difussion-round > 0 and ticks < block-difussion-round [ ;; block diff
-    ask patches [ ;; perform difussion and evaporation
+  if block-difussion-round > 0 and ticks < block-difussion-round 
+  [ ;; block diff
+    update-env
+  ]
 
-      ifelse any? neighbors [ ;; difussion
+  tick
+  
+end
+
+;; ---------------------------------------------- UPDATE PROCEDURE ----------------------------------------------
+to update-env
+  
+  ;; TODO: Add switcher to use different diffusion engine. Manifold.
+  ifelse diffusion-mode = "Gaussian"
+  [
+    gaussian-diffuse "chemical" ( 1 - evaporation-rate )
+  ]
+  [
+  ;; Legacy Difussion. Assumes equal distances.
+    ask patches 
+    [ ;; perform difussion and evaporation
+      ifelse any? neighbors 
+      [ ;; difussion
         let promedio-vecinos (sum [chemical] of neighbors / count neighbors) ;round (sum [chemical] of neighbors / count neighbors)
         set chemical chemical + diffusion-rate * ( promedio-vecinos - chemical )
-      ][
+      ]
+      [
         ; Aquí se aplican las condiciones de frontera
         ; Por ejemplo, para paredes absorbentes:
         set chemical 0
       ]
-        ;[
-      recolor-patch
+      ;;recolor-patch
       ;set green-patches 0
       ;;set chemical chemical - 0.09 * (green-patches / initial-green-patches)
       set chemical chemical * (1 - evaporation-rate) ;; slowly evaporate chemical
     ]
   ]
-
-
-  tick
+    
 end
+
+;; --------------------------------------------------------------------------------------------------------------
 
 
 
@@ -321,8 +345,11 @@ to return-to-nest  ;; turtle procedure
     set color cyan
     set max-smell 0
     set last-arrival-time ticks ;;last arrival time is when ant go to nest
-    rt 180 ]
-  [ ;set chemical chemical + ant-difussion-rate  ;; drop some chemical
+    rt 180 
+  ]
+  [ 
+    
+    ;set chemical chemical + ant-difussion-rate  ;; drop some chemical
     ifelse top-4-enabled [ uphill-nest-scent-random-top4 ] [ uphill-nest-scent ]
   ]     ;; head toward the greatest value of nest-scent
 end
@@ -389,7 +416,8 @@ to look-for-food  ;; turtle procedure
       movement-alg = "max-smell" [ uphill-chemical ]
       movement-alg = "ortogonal-smell" [ uphill-chemical-new ]
       movement-alg = "uphill-chemical-radius"  [uphill-chemical-radius]
-    [ uphill-chemical ]
+      ;movement-alg = "sobel-rw" [ sobel-rw-ascent ] ;; TODO: Levy Random Walk
+      [ uphill-chemical ]
   )
 
 end
@@ -758,6 +786,67 @@ to-report chemical-scent-at-angle [angle]
   report [chemical] of p
 end
 
+;; ---------------------------- GAUSSIAN KERNEL DIFFUSION -----------------------------------------------------
+;; Gaussian Kernel
+to gaussian-diffuse [ var decay ]
+  
+  ;; Gaussian 2D isotropic difussion
+  ;; Dynamic diffusion
+  ask patches
+  [
+    
+    let p_c  [ runresult var ] of patch-at 0 0
+    
+    let p_n  ifelse-value ( patch-at  0  1 != nobody ) [ [ runresult var ] of patch-at  0  1 ][ p_c ]
+    let p_nw ifelse-value ( patch-at -1  1 != nobody ) [ [ runresult var ] of patch-at -1  1 ][ p_c ]
+    let p_w  ifelse-value ( patch-at -1  0 != nobody ) [ [ runresult var ] of patch-at -1  0 ][ p_c ]
+    let p_sw ifelse-value ( patch-at -1 -1 != nobody ) [ [ runresult var ] of patch-at -1 -1 ][ p_c ]
+    let p_s  ifelse-value ( patch-at  0 -1 != nobody ) [ [ runresult var ] of patch-at  0 -1 ][ p_c ]
+    let p_se ifelse-value ( patch-at  1 -1 != nobody ) [ [ runresult var ] of patch-at  1 -1 ][ p_c ]
+    let p_e  ifelse-value ( patch-at  1  0 != nobody ) [ [ runresult var ] of patch-at  1  0 ][ p_c ]    
+    let p_ne ifelse-value ( patch-at  1  1 != nobody ) [ [ runresult var ] of patch-at  1  1 ][ p_c ]
+  
+    ;; Kernel step
+    let p_val ( 4 * p_c + 2 * ( p_n + p_w + p_s + p_e) + (p_nw + p_sw + p_se + p_ne)) / 16
+    set temp (p_val * decay)
+  ]
+  
+  ;; Set after diffuse
+  ask patches
+  [
+    run ( word "set " var " temp")
+  ]
+  
+end
+  
+; -------------------------------------------------------------------------------------------------------------
+
+;; ---------------------------- SOBEL TURTLE PROCEDURE --------------------------------------------------------
+;; Sobel Operator := Gradient Ascent.
+to-report sobel-ascent [ var ]
+  
+  ;; var (Pher., Nest, Smell) at neighbors 3x3 grid
+  let p_n  ifelse-value ( patch-at  0  1 != nobody ) [ [ runresult var ] of patch-at  0  1 ][ 0 ]
+  let p_nw ifelse-value ( patch-at -1  1 != nobody ) [ [ runresult var ] of patch-at -1  1 ][ 0 ]
+  let p_w  ifelse-value ( patch-at -1  0 != nobody ) [ [ runresult var ] of patch-at -1  0 ][ 0 ]
+  let p_sw ifelse-value ( patch-at -1 -1 != nobody ) [ [ runresult var ] of patch-at -1 -1 ][ 0 ]
+  let p_s  ifelse-value ( patch-at  0 -1 != nobody ) [ [ runresult var ] of patch-at  0 -1 ][ 0 ]
+  let p_se ifelse-value ( patch-at  1 -1 != nobody ) [ [ runresult var ] of patch-at  1 -1 ][ 0 ]
+  let p_e  ifelse-value ( patch-at  1  0 != nobody ) [ [ runresult var ] of patch-at  1  0 ][ 0 ]    
+  let p_ne ifelse-value ( patch-at  1  1 != nobody ) [ [ runresult var ] of patch-at  1  1 ][ 0 ]
+  
+  ;; Sobel Gradient (S * A conv.)
+  let gx (p_ne + (2 * p_e) + p_se) - (p_nw + (2 * p_w) + p_sw)
+  let gy (p_nw + (2 * p_n) + p_ne) - (p_sw + (2 * p_s) + p_se)
+  
+  let s_mag sqrt (gx ^ 2 + gy ^ 2)
+  let angle atan gx gy
+  
+  ;; Return heading angle and magnitude to dec.
+  report (list angle s_mag)
+ 
+end
+;; ------------------------------------------------------------------------------------------------------------
 
 to add-f-point [ pos_x pos_y f-size ] ;;
   ask patches [
@@ -850,6 +939,70 @@ to set-simetry-2
   add-f-point 0.6 0.6 5
   add-f-point -0.6 -0.6 5
 end
+
+
+; ------------------------------------- TEST CASE DIFFUSION MODE ---------------------------------------------
+; GAUSSIAN KERNEL (Circle)
+to test-gaussian-diffusion
+  ca 
+  
+  ask patch 0 0 [ set chemical 1000 ]
+  
+  repeat 100
+  [
+    gaussian-diffuse "chemical" diffusion-rate
+    
+    ask patches 
+    [ 
+      set pcolor scale-color green chemical 0 1
+    ]
+    
+    display
+  ]
+end
+
+; VON NEUMANN (Diamond)
+to test-von-neumann-diffusion
+  ca
+  
+  ask patch 0 0 [ set chemical 1000 ]
+  
+  repeat 100
+  [
+    diffuse4 chemical diffusion-rate
+      
+    ask patches 
+    [ 
+      
+      set pcolor scale-color red chemical 0 1
+
+    ]
+    
+    display
+  ]
+end
+
+; MOORE (Square)
+
+to test-moore-diffusion
+  ca
+  
+  ask patch 0 0 [ set chemical 1000 ]
+  
+  repeat 100
+  [
+    diffuse chemical diffusion-rate
+    
+    
+    ask patches 
+    [ 
+      set pcolor scale-color blue chemical 0 1
+    ]
+    
+    display
+  ]
+end
+;--------------------------------------------------------------------------------------------------------------------------
 
 
 
@@ -988,12 +1141,12 @@ end
 ; Copyright 1997 Uri Wilensky.
 ; See Info tab for full copyright and license.]]></code>
   <widgets>
-    <view x="237" wrappingAllowedX="false" y="11" frameRate="30.0" minPycor="-100" height="511" showTickCounter="true" patchSize="2.5" fontSize="8" wrappingAllowedY="false" width="510" tickCounterLabel="ticks" maxPycor="100" updateMode="1" maxPxcor="100" minPxcor="-100"></view>
+    <view x="237" wrappingAllowedX="false" y="11" frameRate="30.0" minPycor="-100" height="509" showTickCounter="true" patchSize="2.5" fontSize="8" wrappingAllowedY="false" width="509" tickCounterLabel="ticks" maxPycor="100" updateMode="1" maxPxcor="100" minPxcor="-100"></view>
     <button x="36" y="143" height="33" disableUntilTicks="false" forever="false" kind="Observer" width="61" sizeVersion="0">setup</button>
     <slider x="31" step="0.05" y="31" max="1" display="diffusion-rate" height="33" min="0.0" direction="Horizontal" default="1.0" variable="diffusion-rate" width="190" sizeVersion="0"></slider>
-    <slider x="32" step="0.01" y="68" max="1" display="evaporation-rate" height="33" min="0.0" direction="Horizontal" default="0.0" variable="evaporation-rate" width="190" sizeVersion="0"></slider>
+    <slider x="32" step="0.01" y="68" max="1" display="evaporation-rate" height="33" min="0.0" direction="Horizontal" default="0.38" variable="evaporation-rate" width="190" sizeVersion="0"></slider>
     <button x="99" y="143" height="33" disableUntilTicks="true" forever="true" kind="Observer" width="58" sizeVersion="0">go</button>
-    <slider x="32" step="1.0" y="104" max="100" display="population" height="33" min="0.0" direction="Horizontal" default="1.0" variable="population" width="190" sizeVersion="0"></slider>
+    <slider x="32" step="1.0" y="104" max="100" display="population" height="33" min="0.0" direction="Horizontal" default="39.0" variable="population" width="190" sizeVersion="0"></slider>
     <slider x="767" step="1" y="56" max="10" display="food-size" height="33" min="0" direction="Horizontal" default="6.0" variable="food-size" width="172" sizeVersion="0"></slider>
     <slider x="768" step="0.1" y="91" max="1" display="food-pos-x" height="33" min="-1" direction="Horizontal" default="-0.5" variable="food-pos-x" width="172" sizeVersion="0"></slider>
     <button x="768" y="162" height="33" disableUntilTicks="false" forever="false" kind="Patch" width="114" sizeVersion="0">add-food-point</button>
@@ -1032,7 +1185,7 @@ end
     </chooser>
     <switch x="1084" y="89" height="33" on="true" variable="debug" display="debug" width="103" sizeVersion="0"></switch>
     <input x="1015" multiline="false" y="270" height="60" variable="block-difussion-round" type="number" width="155" sizeVersion="0">1200.0</input>
-    <chooser x="1068" y="138" height="45" variable="map-selection" current="0" display="map-selection" width="138" sizeVersion="0">
+    <chooser x="1068" y="138" height="45" variable="map-selection" current="9" display="map-selection" width="138" sizeVersion="0">
       <choice type="string" value="cross"></choice>
       <choice type="string" value="Xcross"></choice>
       <choice type="string" value="simetry"></choice>
@@ -1042,8 +1195,15 @@ end
       <choice type="string" value="triangle"></choice>
       <choice type="string" value="square"></choice>
       <choice type="string" value="pentagon"></choice>
+      <choice type="string" value="test-gaussian-diffusion"></choice>
+      <choice type="string" value="test-von-neumann-diffusion"></choice>
+      <choice type="string" value="test-moore-diffusion"></choice>
     </chooser>
     <slider x="770" step="1" y="233" max="50" display="wiggle-angle" height="33" min="0" direction="Horizontal" default="40.0" variable="wiggle-angle" width="172" sizeVersion="0"></slider>
+    <chooser x="1118" y="24" height="60" variable="diffusion-mode" current="0" width="250" display="diffusion-mode">
+      <choice type="string" value="Gaussian"></choice>
+      <choice type="string" value="Standard"></choice>
+    </chooser>
   </widgets>
   <info><![CDATA[## WHAT IS IT?
 
