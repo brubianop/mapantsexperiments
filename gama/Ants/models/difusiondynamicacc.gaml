@@ -10,6 +10,11 @@ model ScentDiffusion
 import "scenarios.gaml"
 
 global {
+
+	
+	// Diffusion Model Switch
+	string diffusion_mode <- "Standard" among: ["Standard", "Gaussian"];
+	
     // -----------------------------------------------------------------
     // PHYSICAL PARAMETERS
     // -----------------------------------------------------------------
@@ -21,8 +26,8 @@ global {
     // Low values (e.g., 0.005) allow the scent to travel further.
     float evaporation_rate <- 0.0 min: 0.0 max: 1.0; 
     
-    // Grid dimensions
-    int grid_size <- 50; 
+    // Grid dimensions // HOTFIX ORIGINAL 50
+    int grid_size <- 100; 
     geometry shape <- square(grid_size);
     
     
@@ -64,25 +69,45 @@ global {
         // STEP 2: DIFFUSION
         //diffuse var: chemical on: cells propagation: diffusion proportion: diffusion_rate;
         // 2. DIFUSIÓN MANUAL (Cálculo del promedio de vecinos como en NetLogo)
-   		 // Usamos 'temp_chemical' para que el cálculo de una celda no afecte a la siguiente en el mismo ciclo
-    	ask cells {
-        	float promedio_vecinos <- neighbors mean_of (each.chemical);
-        // La fórmula de tu NetLogo: set chemical chemical + diffusion-rate * ( promedio-vecinos - chemical )
-       		 new_chemical <- chemical + diffusion_rate * (promedio_vecinos - chemical);
+   		// Usamos 'temp_chemical' para que el cálculo de una celda no afecte a la siguiente en el mismo ciclo
+   		if (diffusion_mode = "Standard") {
+   			 
+   			ask cells {
+   				float promedio_vecinos <- neighbors mean_of (each.chemical);
+   				new_chemical <- chemical + diffusion_rate * (promedio_vecinos - chemical);
+   				}
+   				
+   		} else if (diffusion_mode = "Gaussian") {
+        		ask cells {
+            	float p_c <- chemical;
+            	// Trick. Conservation of Mass around edges.
+            	float p_sum <- 16 * p_c;
+            
+            	loop n over: neighbors {
+                	if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
+                    	p_sum <- p_sum - (2 * p_c) + (2 * n.chemical);
+                	} else {
+                    	p_sum <- p_sum - (1 * p_c) + (1 * n.chemical);
+                	}
+            	}
+            
+            	float p_val <- p_sum / 16;
+            	new_chemical <- chemical + diffusion_rate * (p_val - chemical);
+        	}
     	}
 	    
 	    ask cells{
 	    	chemical <- new_chemical;
-	        
-        // STEP 3: EVAPORATION
-		        if (evaporation_rate > 0) {
-		            ask cells {
-		            	
-		                chemical <- chemical * (1 - evaporation_rate);
-		            }
-		        }
 		}
-		 
+		
+		// STEP 3: EVAPORATION
+        //Redundant IF statement
+		if (evaporation_rate > 0) {
+			ask cells {
+				chemical <- chemical * (1 - evaporation_rate);
+		    }
+		 }
+		  
     }
 } 
 
@@ -143,6 +168,7 @@ experiment MainExperimentNetDiff type: gui {
     parameter "Diffusion Speed" var: diffusion_rate;
     parameter "Evaporation Speed" var: evaporation_rate;
 	parameter "Scenario" var: scenario_type;
+	parameter "Diffusion Mode" var: diffusion_mode;
 	
     output {
         // Main Map Display

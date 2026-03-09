@@ -14,13 +14,16 @@ model scenarios
 global {
     // Acción base para mapear coordenadas
     action add_f_point(float nl_x, float nl_y, float amount) {
-        int gama_x <- int(50 + (nl_x * 40));
-        int gama_y <- int(50 - (nl_y * 40));
+    	
+    	
+        int gama_x <- int(50 + (nl_x * 49));
+        int gama_y <- int(50 - (nl_y * 49));
         
         gama_x <- max(0, min(99, gama_x));
         gama_y <- max(0, min(99, gama_y));
         
         // Asumimos que el grid se llama 'cells' en el archivo principal
+        
         ask cells[gama_x, gama_y] {
             food <- amount;
         }

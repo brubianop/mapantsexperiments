@@ -8,6 +8,9 @@
 model ScentDiffusion
 
 global {
+	
+	// Diffusion Model Switch
+	string diffusion_mode <- "Standard" among: ["Standard", "Gaussian"];
     // -----------------------------------------------------------------
     // PHYSICAL PARAMETERS
     // -----------------------------------------------------------------
@@ -48,23 +51,47 @@ global {
     // MAIN PHYSICS LOOP (Executed every cycle)
     // -----------------------------------------------------------------
     reflex diffusion_dynamics {
-        
-        // STEP 2: DIFFUSION (Spread)
-        // GAMA's optimized algorithm spreads the 'chemical' variable 
-        // from cells with high values to neighbors with low values.
-        diffuse var: chemical on: cells propagation: diffusion proportion: diffusion_rate;
-        
-        
-        
+       
         // STEP 1: EMISSION (Source)
         // Food sources constantly emit chemical into their current cell.
         // The emission is proportional to the food amount (size).
         ask cells where (each.food > 0) {
             // We multiply by 100.0 to create a strong concentration gradient
-            chemical <- chemical + food * 100.0; 
+            chemical <- food * 100.0; 
         }
         
-        
+        // STEP 2: DIFFUSION (Spread)
+        // GAMA's optimized algorithm spreads the 'chemical' variable 
+        // from cells with high values to neighbors with low values.
+        if (diffusion_mode = "Standard") {
+        	
+        	diffuse var: chemical on: cells proportion: diffusion_rate;
+        	
+        } else if (diffusion_mode = "Gaussian") {
+   			
+   			ask cells {
+            	float p_c <- chemical;
+            	// Neat trick. It would be fixed at the end.
+            	float p_sum <- 16 * p_c;
+            
+            	loop n over: neighbors {
+                	if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
+                    	p_sum <- p_sum - (2 * p_c) + (2 * n.chemical);
+                	} else {
+                    	p_sum <- p_sum - (1 * p_c) + (1 * n.chemical);
+                	}
+            	}
+            
+            	float p_val <- p_sum / 16;
+            	new_chemical <- chemical + diffusion_rate * (p_val - chemical);
+        	}
+    		
+    		ask cells {
+    			chemical <- new_chemical;
+    		}
+   			
+   		}
+
         // STEP 3: EVAPORATION (Decay)
         // The scent dissipates over time to prevent infinite accumulation.
         ask cells {
@@ -79,6 +106,7 @@ global {
 grid cells width: grid_size height: grid_size neighbors: 6 { //#hex world
     // State variables
     float chemical <- 0.0;  // The scent intensity
+    float new_chemical <- 0.0;
     float food <- 0.0;      // Amount of food (0 if empty)
 
     // -----------------------------------------------------------------
@@ -128,6 +156,7 @@ experiment MainExperiment type: gui {
     // The 'parameter' keyword connects the UI slider to the global variable
     parameter "Diffusion Speed" var: diffusion_rate;
     parameter "Evaporation Speed" var: evaporation_rate;
+    parameter "Diffusion Mode" var: diffusion_mode;
 
     output {
         // Main Map Display
