@@ -14,16 +14,13 @@ model scenarios
 global {
     // Acción base para mapear coordenadas
     action add_f_point(float nl_x, float nl_y, float amount) {
-    	
-    	
-        int gama_x <- int(50 + (nl_x * 49));
-        int gama_y <- int(50 - (nl_y * 49));
+        int gama_x <- int(50 + (nl_x * 40));
+        int gama_y <- int(50 - (nl_y * 40));
         
         gama_x <- max(0, min(99, gama_x));
         gama_y <- max(0, min(99, gama_y));
         
         // Asumimos que el grid se llama 'cells' en el archivo principal
-        
         ask cells[gama_x, gama_y] {
             food <- amount;
         }
@@ -58,6 +55,62 @@ global {
         do add_f_point(-1.0, -1.0, 10.0);
         do add_f_point(1.0, 1.0, 10.0);
     }
+    
+    action set_isotropic_food_four{
+    	do 	set_isotropic_food(4, 40.0);
+    }
+    
+    action set_isotropic_food (int num_sources, float radius) {
+    // Definimos el centro (donde está tu nido)
+    point center <- {50.0, 50.0};
+    
+    // Repartimos los puntos equitativamente en 360 grados
+    loop i from: 0 to: num_sources - 1 {
+        // Calculamos el ángulo para este punto de comida
+        float angle <- i * (360.0 / num_sources);
+        
+        // Calculamos la coordenada X y Y exactas en el espacio continuo
+        float target_x <- center.x + (radius * cos(angle));
+        float target_y <- center.y + (radius * sin(angle));
+        point food_location <- {target_x, target_y};
+        
+        // Magia de GAMA: Le pedimos a la celda que contiene ese punto físico que se active
+        ask cells(food_location) {
+            food <- 10.0;
+        	}
+    	}
+	}
+    
+    
+
+	action set_one_point_hex_ang (int angle, float radius) {
+    	// 1. Usamos el centro geométrico EXACTO de la celda central
+    	point center <- cells[50, 50].location;
+            
+        // 2. Calculamos la coordenada destino en el espacio continuo
+        float target_x <- center.x + (radius * cos(angle));
+        float target_y <- center.y + (radius * sin(angle));
+        point food_location <- {target_x, target_y};
+        
+        // 3. MAGIA: 'closest_to' ignora si el punto cae en un borde ambiguo.
+        // Calcula qué centro de hexágono está más cerca de tu objetivo matemático.
+        ask cells closest_to(food_location) {
+            food <- 10.0;
+        }
+    }
+	
+	
+	action set_one_point_hex_angle {     	
+     	do set_one_point_hex_ang(0, 30.0);
+    }
+    
+    action set_two_points_hex_angle {     	
+     	do set_one_point_hex_ang(0, 30.0);
+     	do set_one_point_hex_ang(180, 30.0);
+    }
+    
+    
+    
     
     // Puedes seguir agregando todos tus 'to set-...' de NetLogo aquí
 }

@@ -8,7 +8,7 @@
 
 model ants
 
-import "antsdiffdynamic.gaml"
+//import "antsdiffdynamicgrid.gaml"
 
 /* Insert your model definition here */
 
