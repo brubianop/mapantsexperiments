@@ -15,7 +15,7 @@ import "ants.gaml"
 
 global {
 	//Diffusion Model Switch
-	string diffusion_mode <- "Standard" among: ["Standard", "Gaussian"];
+	string diffusion_mode <- "Standard" among: ["Standard", "Gaussian", "Gaussian-Weighted"];
 	
     // -----------------------------------------------------------------
     // PHYSICAL PARAMETERS
@@ -57,7 +57,7 @@ global {
     int ants_number <- 30;
     
 	// Parámetro para elegir el escenario desde la interfaz
-    string scenario_type <- "Cross" among: ["North", "Cross", "Circle", "Xcross"];
+    string scenario_type <- "Cross" among: ["North", "Cross", "Circle", "Xcross", "Center", "Diagonal", "Ortho-Diag"];
 
     // -----------------------------------------------------------------
     // INITIALIZATION
@@ -67,6 +67,9 @@ global {
         if (scenario_type = "Cross") { do set_cross; }
         if (scenario_type = "Xcross") { do set_xcross; }
         if (scenario_type = "Circle") { do set_circle; }
+        if (scenario_type = "Center") { do set_one_point_center; }
+        if (scenario_type = "Diagonal") { do set_diagonal; }
+        if (scenario_type = "Ortho-Diag") { do set_ortho_diag; }
         
         
         create nest_point number: 1 {location <- {50, 50};}
@@ -124,13 +127,32 @@ global {
                 	if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
                     	p_sum <- p_sum - (2 * p_c) + (2 * n.chemical); //Orthogonal.
                 	} else {
-                    	p_sum <- p_sum - (1 * p_c) + (1 * n.chemical); //Diagonal
+                    	p_sum <- p_sum - (1 * p_c) + (1 * n.chemical); //Diagonal.
                 	}
             	}
             
             	float p_val <- p_sum / 16;
             	new_chemical <- chemical + diffusion_rate * (p_val - chemical);
         	}
+    	} else if (diffusion_mode = "Gaussian-Weighted") {
+    		ask cells {
+    			float p_sum <- 0.0;
+    			int w_sum <- 4;
+    			p_sum <- 4 * self.chemical; //Center cell initial weighted val.
+    			loop n over: neighbors {
+    				if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
+    					p_sum <- p_sum + (2 * n.chemical);
+    					w_sum <- w_sum + 2;
+    				} else {
+    					p_sum <- p_sum + (1 * n.chemical);
+    					w_sum <- w_sum + 1;
+    				}
+    			}	
+    				
+    			float p_val <- p_sum / w_sum; //Weighted normalized sum. 
+    			new_chemical <- chemical + diffusion_rate * (p_val - chemical);
+    		}
+    			
     	}
 	    
 	    ask cells{

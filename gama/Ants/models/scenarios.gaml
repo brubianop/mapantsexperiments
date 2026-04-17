@@ -109,6 +109,22 @@ global {
      	do set_one_point_hex_ang(180, 30.0);
     }
     
+    //Center point. Diffusion purposes.
+    action set_one_point_center {
+    	do add_f_point(0.0, 0.0, 10.0);
+    }
+    
+    //Diagonal points.
+    action set_diagonal {
+    	do add_f_point(1.0, 1.0, 10.0);
+    	do add_f_point(-1.0, -1.0, 10.0);
+    }
+    
+    //Orthogonal and diagonal
+    action set_ortho_diag {
+    	do add_f_point(1.0, 0.0, 10.0);
+    	do add_f_point(1.0, -1.0, 10.0);
+    }
     
     
     
