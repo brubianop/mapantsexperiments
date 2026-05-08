@@ -15,7 +15,7 @@ import "ants.gaml"
 
 global {
 	//Diffusion Model Switch
-	string diffusion_mode <- "Standard" among: ["Standard", "Gaussian", "Gaussian-Weighted"];
+	string diffusion_mode <- "Standard" among: ["Standard", "Gaussian", "Gaussian-Weighted", "Laplacian-Nine_Point", "Laplacian-Weighted-Nine_Point"];
 	
     // -----------------------------------------------------------------
     // PHYSICAL PARAMETERS
@@ -134,6 +134,7 @@ global {
             	float p_val <- p_sum / 16;
             	new_chemical <- chemical + diffusion_rate * (p_val - chemical);
         	}
+        	
     	} else if (diffusion_mode = "Gaussian-Weighted") {
     		ask cells {
     			float p_sum <- 0.0;
@@ -151,6 +152,44 @@ global {
     				
     			float p_val <- p_sum / w_sum; //Weighted normalized sum. 
     			new_chemical <- chemical + diffusion_rate * (p_val - chemical);
+    		}
+    			
+    	} else if (diffusion_mode = "Laplacian-Nine_Point") {
+    		ask cells {
+    			float p_sum <- 0.0;
+    			int w_sum <- 0.0;
+    			p_sum <- -20 * self.chemical; 
+    			loop n over: neighbors {
+    				if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
+    					p_sum <- p_sum + (4 * n.chemical);
+    					w_sum <- w_sum + 4;
+    				} else {
+    					p_sum <- p_sum + (1 * n.chemical);
+    					w_sum <- w_sum + 1;
+    				}
+    			}	
+    				
+    			float p_val <- p_sum / 20; 
+    			new_chemical <- chemical + (diffusion_rate * p_val);
+    		}
+    			
+    	} else if (diffusion_mode = "Laplacian-Weighted-Nine_Point") {
+    		ask cells {
+    			float p_sum <- 0.0;
+    			int w_sum <- 0.0;
+    			p_sum <- -20 * self.chemical; 
+    			loop n over: neighbors {
+    				if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
+    					p_sum <- p_sum + (4 * n.chemical);
+    					w_sum <- w_sum + 4;
+    				} else {
+    					p_sum <- p_sum + (1 * n.chemical);
+    					w_sum <- w_sum + 1;
+    				}
+    			}	
+    				
+    			float p_val <- p_sum / w_sum; 
+    			new_chemical <- chemical + (diffusion_rate * p_val);
     		}
     			
     	}
