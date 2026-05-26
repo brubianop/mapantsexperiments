@@ -118,22 +118,53 @@ global {
    				}
    				
    		} else if (diffusion_mode = "Gaussian") {
-        	ask cells {
-            	float p_c <- chemical;
-            	// Trick. Conservation of Mass around edges.
-            	// 4 center, 2 * 4 orthogonal, 1 * 4 diagonal -> 16
-            	float p_sum <- 16 * p_c;
-            	loop n over: neighbors {
-                	if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
-                    	p_sum <- p_sum - (2 * p_c) + (2 * n.chemical); //Orthogonal.
-                	} else {
-                    	p_sum <- p_sum - (1 * p_c) + (1 * n.chemical); //Diagonal.
-                	}
-            	}
+   			
+    		int max_x <- grid_size - 1;
+    		int max_y <- grid_size - 1;
+    		
+    		ask cells {
+        		int cx <- self.grid_x;
+        		int cy <- self.grid_y;
+        
+        		//CLAMP (Neighbors case)
+        		int left  <- max([0, cx - 1]);
+        		int right <- min([max_x, cx + 1]);
+        		int up    <- max([0, cy - 1]);
+        		int down  <- min([max_y, cy + 1]);
+        
+        
+        		/*
+        		 * C00 C01 C02
+        		 * C10 C11 C12
+        		 * C20 C21 C22
+        		 * 
+        		 *  1   2   1 
+        		 *  2   4   2
+        		 *  1   2   1
+        		 */
+        		float c11 <- self.chemical; // Center
+        
+        		//Orthogonal
+        		float c10 <- (cells[cx, up]).chemical;  
+        		float c12 <- (cells[cx, down]).chemical;  
+        		float c01 <- (cells[left, cy]).chemical; 
+        		float c21 <- (cells[right, cy]).chemical; 
+        
+        		//Diagonal
+        		float c00 <- (cells[left, up]).chemical;    
+        		float c20 <- (cells[right, up]).chemical;  
+        		float c02 <- (cells[left, down]).chemical;  
+        		float c22 <- (cells[right, down]).chemical;
+
+        		//Gaussian
+        		float p_sum <- (4.0 * c11) + 
+                       		   (2.0 * (c10 + c12 + c01 + c21)) + 
+                       		   (1.0 * (c00 + c20 + c02 + c22));
             
-            	float p_val <- p_sum / 16;
-            	new_chemical <- chemical + diffusion_rate * (p_val - chemical);
-        	}
+        		float p_val <- p_sum / 16.0; 
+        
+ 				new_chemical <- max([0, chemical + diffusion_rate * (p_val - chemical)]);
+    		}
         	
     	} else if (diffusion_mode = "Gaussian-Weighted") {
     		ask cells {
@@ -151,32 +182,65 @@ global {
     			}	
     				
     			float p_val <- p_sum / w_sum; //Weighted normalized sum. 
+    			
+    			//LERP (LARP lol)
     			new_chemical <- chemical + diffusion_rate * (p_val - chemical);
     		}
     			
     	} else if (diffusion_mode = "Laplacian-Nine_Point") {
+    		
+    		int max_x <- grid_size - 1;
+    		int max_y <- grid_size - 1;
+    		
     		ask cells {
-    			float p_sum <- 0.0;
-    			int w_sum <- 0.0;
-    			p_sum <- -20 * self.chemical; 
-    			loop n over: neighbors {
-    				if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
-    					p_sum <- p_sum + (4 * n.chemical);
-    					w_sum <- w_sum + 4;
-    				} else {
-    					p_sum <- p_sum + (1 * n.chemical);
-    					w_sum <- w_sum + 1;
-    				}
-    			}	
-    				
-    			float p_val <- p_sum / 20; 
-    			new_chemical <- chemical + (diffusion_rate * p_val);
+        		int cx <- self.grid_x;
+        		int cy <- self.grid_y;
+        
+        		//CLAMP (Neighbors case)
+        		int left  <- max([0, cx - 1]);
+        		int right <- min([max_x, cx + 1]);
+        		int up    <- max([0, cy - 1]);
+        		int down  <- min([max_y, cy + 1]);
+        
+        		/* 
+        		 * C00 C01 C02
+        		 * C10 C11 C12
+        		 * C20 C21 C22
+        		 * 
+        		 *  1   4   1 
+        		 *  4  -20  4
+        		 *  1   4   1
+        		 */
+        		 
+        		float c11 <- self.chemical; // Center
+        
+        		// Orthogonal
+        		float c10 <- (cells[cx, up]).chemical;  
+        		float c12 <- (cells[cx, down]).chemical; 
+        		float c01 <- (cells[left, cy]).chemical; 
+        		float c21 <- (cells[right, cy]).chemical;
+        
+        		// Diagonal
+        		float c00 <- (cells[left, up]).chemical; 
+        		float c20 <- (cells[right, up]).chemical; 
+        		float c02 <- (cells[left, down]).chemical; 
+        		float c22 <- (cells[right, down]).chemical;
+
+        		// Mehrstellen
+        		float p_sum <- (-20.0 * c11) + 
+                       		   (4.0 * (c10 + c12 + c01 + c21)) + 
+                       		   (1.0 * (c00 + c20 + c02 + c22));
+            
+        		float p_val <- p_sum / 6.0; 
+        
+ 
+        		new_chemical <- max([0.0, chemical + (diffusion_rate * p_val)]);
     		}
-    			
-    	} else if (diffusion_mode = "Laplacian-Weighted-Nine_Point") {
+    	
+		} else if (diffusion_mode = "Laplacian-Weighted-Nine_Point") {
     		ask cells {
     			float p_sum <- 0.0;
-    			int w_sum <- 0.0;
+    			float w_sum <- 0.0;
     			p_sum <- -20 * self.chemical; 
     			loop n over: neighbors {
     				if (n.grid_x = self.grid_x or n.grid_y = self.grid_y) {
@@ -192,32 +256,32 @@ global {
     			new_chemical <- chemical + (diffusion_rate * p_val);
     		}
     			
-    	}
+    	}	
 	    
-	    ask cells{
-	    	chemical <- new_chemical;
-		}
+	    	ask cells{
+	    		chemical <- new_chemical;
+			}
 		
-		// STEP 3: EVAPORATION
-        //Redundant IF statement
-		if (evaporation_rate > 0) {
-			ask cells {
-				chemical <- chemical * (1 - evaporation_rate);
-		    }
-		 }
+			// STEP 3: EVAPORATION
+        	//Redundant IF statement
+			if (evaporation_rate > 0) {
+				ask cells {
+					chemical <- chemical * (1 - evaporation_rate);
+		    	}
+		 	}
 		  
-    }
-    // FASE 2: LIBERACIÓN (En el momento exacto que termina la difusión)
-        else if (cycle = diffusion_rounds + 1) {
+    	}
+    	// FASE 2: LIBERACIÓN (En el momento exacto que termina la difusión)
+        	else if (cycle = diffusion_rounds + 1) {
             
-            write ">>> ¡DIFUSIÓN COMPLETADA! Liberando hormigas...";
+            	write ">>> ¡DIFUSIÓN COMPLETADA! Liberando hormigas...";
             
-            // --- ORDEN DE LIBERACIÓN ---
-            ask ant {
-                active <- true;
-            }
-            // ---------------------------
-        }
+            	// --- ORDEN DE LIBERACIÓN ---
+            	ask ant {
+                	active <- true;
+            	}
+            	// ---------------------------
+        	}
     }
 } 
 
