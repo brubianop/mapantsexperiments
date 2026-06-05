@@ -21,21 +21,35 @@ global {
     // PHYSICAL PARAMETERS
     // -----------------------------------------------------------------
     
-    
+	
     // Controls how fast the scent spreads to neighbors (0.0 to 1.0)
-    float diffusion_rate <- 0.8 min: 0.0 max: 1.0;
+    float diffusion_rate <- 0.25 min: 0.0 max: 1.0;
     
     // Controls how fast the scent disappears from the environment (0.0 to 1.0)
     // Low values (e.g., 0.005) allow the scent to travel further.
     float evaporation_rate <- 0.0 min: 0.0 max: 1.0; 
    
+   	//Anisotropy trigger. Uses Center scenario across a range of considered diffusion_rates
+   	bool anisotropy_test <- false;
+   
+   //TODO Test cases stuff 
+   	list<map> test_cases;
+	int test_index <- 0;
+	list<float> diffusion_rate_values <- [];
+	
+	
+   	//Recommended ranges for diffusion speed warning
+   	string diffusion_rate_warning <- "";
+   	
+   
+  	
    
     // Grid dimensions
     int grid_size <- 100;
     
     
     // ronda máxima de difusión
-    int diffusion_rounds <- 200;
+    int diffusion_rounds <- 1000;
      
 	// List to save travel times
 	list<int> travel_times <- [];
@@ -47,7 +61,6 @@ global {
 	action register_success(int t){
 		add t to: travel_times;
 	}
-	
 	
 
 	
@@ -95,7 +108,10 @@ global {
             food <- 20.0; 
         } */
         
-    }
+        
+        
+        
+   }
 
    reflex diffusion_dynamics {
    	if(cycle <= diffusion_rounds){
@@ -103,7 +119,7 @@ global {
         // CAMBIO 1: EMISIÓN ACUMULATIVA
         ask cells where (each.food > 0) {
             // Usamos += para que el olor se sume en cada ciclo en lugar de resetearse
-            chemical <- food*10; 
+            chemical <- food*100; 
         }
         
         // STEP 2: DIFFUSION
@@ -162,8 +178,9 @@ global {
                        		   (1.0 * (c00 + c20 + c02 + c22));
             
         		float p_val <- p_sum / 16.0; 
-        
- 				new_chemical <- max([0, chemical + diffusion_rate * (p_val - chemical)]);
+        		float lap <- p_val - chemical;
+        		//Use diffusion_rate with 1 for pure Gaussian Blur. LERP crank.
+ 				new_chemical <- max([0, chemical + diffusion_rate * lap]);
     		}
         	
     	} else if (diffusion_mode = "Gaussian-Weighted") {
@@ -182,9 +199,9 @@ global {
     			}	
     				
     			float p_val <- p_sum / w_sum; //Weighted normalized sum. 
-    			
+    			float lap <- p_val - chemical;
     			//LERP (LARP lol)
-    			new_chemical <- chemical + diffusion_rate * (p_val - chemical);
+    			new_chemical <- chemical + diffusion_rate * lap;
     		}
     			
     	} else if (diffusion_mode = "Laplacian-Nine_Point") {
@@ -283,6 +300,156 @@ global {
             	// ---------------------------
         	}
     }
+    
+    
+    reflex update_warning {
+
+    	diffusion_rate_warning <- "";
+
+    	if (diffusion_mode = "Laplacian-Nine_Point" or diffusion_mode = "Laplacian-Weighted-Nine_Point") {
+
+        	if (diffusion_rate > 0.3) {
+            	diffusion_rate_warning <- "Above ~0.3 may introduce instability/artifacts";
+        	} else if (diffusion_rate < 0.1) {
+            	diffusion_rate_warning <- "Very stable but slow diffusion";
+        	} else {
+            	diffusion_rate_warning <- "Good operating range (0.1–0.3)";
+        	}
+    	}
+
+    	else if (diffusion_mode = "Gaussian") {
+        	diffusion_rate_warning <- "Stable across full range (0.0–1.0)";
+    	}
+
+    	else if (diffusion_mode = "Standard") {
+        	diffusion_rate_warning <- "Stable across full range (0.0-1.0)";
+    	}
+	}
+	
+
+
+
+	
+    //Ratio (Diagonal/Orthogonal) //TOFIX
+    reflex run_radius_test when: (anisotropy_test and cycle <= 1000) {
+
+    	int mid_x <- int(grid_size / 2);
+    	int mid_y <- int(grid_size / 2);
+
+    	float threshold <- 0.1;
+
+    	float axis_radius <- 0.0;
+    	float diag_radius <- 0.0;
+
+    	// ---- X AXIS ----
+    	loop i from: 0 to: grid_size {
+
+        	if (mid_x + i >= grid_size) {
+            	break;
+        	}
+
+        	cells c <- cells grid_at {mid_x + i, mid_y};
+
+        	if (c.chemical >= threshold) {
+            	axis_radius <- i;
+        	} else {
+            	break;
+        	}
+    	}
+
+    	//Trigger only when axis has reached desired distance
+    	if (axis_radius >= 50) {
+
+        	// ---- 45° DIAGONAL ----
+        	loop i from: 0 to: grid_size {
+
+            	if (mid_x + i >= grid_size or mid_y + i >= grid_size) {
+                	break;
+            	}
+
+            	cells c <- cells grid_at {mid_x + i, mid_y + i};
+
+            	if (c.chemical >= threshold) {
+                	diag_radius <- sqrt(2.0) * i;
+            	} else {
+                	break;
+            	}
+        	}
+
+        float ratio <- diag_radius / axis_radius;
+
+        	write "****************************************";
+        	write "Mode: " + diffusion_mode;
+        	write "Cycle: " + cycle;
+        	write "Axis radius: " + axis_radius;
+        	write "Diagonal radius: " + diag_radius;
+        	write "Diag/Axis ratio: " + ratio;
+        	write "****************************************";
+
+        	ask world { do pause; }
+    	}
+	}
+	
+	reflex anisotropy_test when: (anisotropy_test and cycle = 200) {
+
+    	int mid_x <- int(grid_size / 2);
+    	int mid_y <- int(grid_size / 2);
+
+    	float threshold <- 0.1;
+
+    	list<float> radii <- [];
+
+    	//Direction vectors (8 directions)
+    	list<int> dx <- [1, 1, 0, -1, -1, -1, 0, 1];
+    	list<int> dy <- [0, 1, 1, 1, 0, -1, -1, -1];
+
+    	loop d from: 0 to: 7 {
+
+        	int x <- mid_x;
+        	int y <- mid_y;
+        	float last_valid <- 0.0;
+        	int i <- 0;
+
+        	loop while: (x >= 0 and x < grid_size and y >= 0 and y < grid_size) {
+
+            	cells c <- cells grid_at {x, y};
+
+            	if (c.chemical >= threshold) {
+                	last_valid <- i;
+            	} else {
+                	break;
+            	}
+
+            	i <- i + 1;
+            	x <- mid_x + dx[d] * i;
+            	y <- mid_y + dy[d] * i;
+        	}
+
+        	//Normalize diagonal distances
+        	float scale <- 1.0;
+        	if (dx[d] != 0 and dy[d] != 0) {
+            	scale <- sqrt(2.0);
+        	}
+
+        	radii <- radii + (last_valid * scale);
+    	}
+
+    	float mean_r <- mean(radii);
+    	float sd_r <- standard_deviation(radii);
+
+    	float anisotropy <- sd_r / mean_r;
+    	float maxmin <- max(radii) / min(radii);
+
+    	write "******************************";
+    	write "Mode: " + diffusion_mode;
+    	write "Cycle: " + cycle;
+    	write "Mean radius: " + mean_r;
+    	write "Std anisotropy: " + anisotropy;
+    	write "Max/Min ratio: " + maxmin;
+    	write "*******************************";
+
+    	ask world { do pause; }
+	}
 } 
 
 // -----------------------------------------------------------------
@@ -364,8 +531,11 @@ experiment MainExperimentNetDiff type: gui {
 	parameter "Scenario" var: scenario_type;
 	parameter "Movement alg:" var: movement_alg;
 	parameter "Difussion rounds:" var: diffusion_rounds;
-	parameter "Diffusion Mode" var: diffusion_mode;
+	parameter "Diffusion Mode" var: diffusion_mode;    //Add.
+	parameter "Anisotropy Test" var: anisotropy_test;  //Add.
 	
+	
+        
 	action export_chemical_map {
         // 1. Definimos la ruta
         string file_path <- "../includes/mapa_" + diffusion_mode + "_" + scenario_type + "_" +cycle + ".csv";
@@ -384,10 +554,14 @@ experiment MainExperimentNetDiff type: gui {
         
         write ">>> Mapa exportado exitosamente (10,000 celdas) en: " + file_path;
     }
+    
 	// Esto crea un botón en el panel de control de la izquierda
     user_command "Exportar Mapa CSV" action: export_chemical_map;
 	
     output {
+    	
+
+    	
         // Main Map Display
         // Background is dark gray to ensure contrast with the black grid
         display "Environment" background: rgb(20, 20, 20) {
@@ -420,6 +594,9 @@ experiment MainExperimentNetDiff type: gui {
                 data "Intensidad" value: cells[17,17].chemical color: #yellow;
             }
         }
+        
+        //Monitor. Diffusion Acceptable ranges. IMPORTANT!
+        monitor "Diffusion warning" value: diffusion_rate_warning;
         
         // Monitor numérico para ver el valor exacto
         monitor "Valor Exacto en [17,17]" value: cells[17,17].chemical;
