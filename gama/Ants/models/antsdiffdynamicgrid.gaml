@@ -30,7 +30,7 @@ global {
     float evaporation_rate <- 0.0 min: 0.0 max: 1.0; 
    
    	//Anisotropy trigger. Uses Center scenario across a range of considered diffusion_rates
-   	bool anisotropy_test <- false;
+   	bool anisotropy_test <- true;
    
    //TODO Test cases stuff 
    	list<map> test_cases;
@@ -49,10 +49,11 @@ global {
     
     
     // ronda máxima de difusión
-    int diffusion_rounds <- 1000;
+    int diffusion_rounds <- 300;
      
 	// List to save travel times
 	list<int> travel_times <- [];
+	list<float> registered_tortuosities <- [];
 	
 	//average times
 	float avg_travel_time <- 0.0 update: (empty(travel_times)) ? 0.0 : mean(travel_times);     
@@ -62,6 +63,62 @@ global {
 		add t to: travel_times;
 	}
 	
+	
+	//Global Metrics (Real stuff)
+    float global_anisotropy <- 0.0;
+    float global_maxmin_ratio <- 0.0;
+    float global_circularity <- 0.0;
+    float global_mse <- 0.0;
+    
+    //Precompute stuff
+    // -----------------------------------------------------------------
+    // ANALYTICAL GREEN SOLUTION FOR MSE
+    // -----------------------------------------------------------------
+    float get_analytical_value(point cell_loc, int current_cycle) {
+        if (current_cycle <= 0) { return 0.0; }
+        float M <- 10.0 * 100.0; // Masa inicial (food * 100)
+        float D <- diffusion_rate; 
+        float t <- float(current_cycle);
+        float dist_sq <- (cell_loc distance_to {50,50}) ^ 2;
+        float denominator <- 4.0 * #pi * D * t;
+        if (denominator = 0) { return 0.0; }
+        return (M / denominator) * exp(-dist_sq / (4.0 * D * t));
+    }
+    // ------------------------------------------------------------------
+	
+	// -----------------------------------------------------------------
+    // DATA EXPORT LOGIC
+    // -----------------------------------------------------------------
+    action register_agent_metrics(int duration, float tort) {
+        //add duration to: travel_times; //Duplicate from register_success stuff
+        
+        add tort to: registered_tortuosities;
+        
+        //25 sample
+        if (length(travel_times) >= 25) {
+            string file_path <- "../includes/results_cpv";
+            list row <- [
+                diffusion_mode, 
+                scenario_type, 
+                diffusion_rate, 
+                global_anisotropy, 
+                global_maxmin_ratio, 
+                global_circularity, 
+                global_mse, 
+                mean(travel_times), 
+                mean(registered_tortuosities)
+            ];
+            
+            if (not file_exists(file_path)) {
+            	save [["Mode", "Scenario", "Rate", "Anisotropy", "MaxMinRatio", "Circularity", "MSE", "TiempoPromedio", "TortuosityPromedio"], row] to: file_path rewrite: false;
+        	}else {
+            	save [row] to: file_path rewrite: false;
+        	}
+        	
+            write ">>> ¡MÉTRICAS DEL EXPERIMENTO EXPORTADAS EXITOSAMENTE EN: " + file_path + " <<<";
+            do pause; 
+        }
+    }
 
 	
      
@@ -70,19 +127,26 @@ global {
     int ants_number <- 30;
     
 	// Parámetro para elegir el escenario desde la interfaz
-    string scenario_type <- "Cross" among: ["North", "Cross", "Circle", "Xcross", "Center", "Diagonal", "Ortho-Diag"];
+    string scenario_type <- "Cross" among: ["Center", "North", "Cross", "Circle", "Xcross", "Diagonal", "Ortho-Diag"];
 
     // -----------------------------------------------------------------
     // INITIALIZATION
     // -----------------------------------------------------------------
     init {
-    	if (scenario_type = "North") { do set_one_point_north; }
-        if (scenario_type = "Cross") { do set_cross; }
-        if (scenario_type = "Xcross") { do set_xcross; }
-        if (scenario_type = "Circle") { do set_circle; }
-        if (scenario_type = "Center") { do set_one_point_center; }
-        if (scenario_type = "Diagonal") { do set_diagonal; }
-        if (scenario_type = "Ortho-Diag") { do set_ortho_diag; }
+    
+        if (experiment.name = "OptimizationSweep") {
+            do set_one_point_center;
+        } else {
+        
+    		if (scenario_type = "North") { do set_one_point_north; }
+        	if (scenario_type = "Cross") { do set_cross; }
+        	if (scenario_type = "Xcross") { do set_xcross; }
+        	if (scenario_type = "Circle") { do set_circle; }
+        	if (scenario_type = "Center") { do set_one_point_center; }
+        	if (scenario_type = "Diagonal") { do set_diagonal; }
+        	if (scenario_type = "Ortho-Diag") { do set_ortho_diag; }
+        	
+        }
         
         
         create nest_point number: 1 {location <- {50, 50};}
@@ -326,130 +390,123 @@ global {
     	}
 	}
 	
-
-
-
 	
-    //Ratio (Diagonal/Orthogonal) //TOFIX
-    reflex run_radius_test when: (anisotropy_test and cycle <= 1000) {
+	//HARDCORE STUFF
+	reflex run_field_evaluation when: (anisotropy_test and cycle >= 300) {
+        
+        //Vars
+        global_anisotropy <- 0.0;
+        global_maxmin_ratio <- 1.0;
+        global_circularity <- 1.0;
+        global_mse <- 0.0;
 
-    	int mid_x <- int(grid_size / 2);
-    	int mid_y <- int(grid_size / 2);
+        // MSE GLOBAL (Every scenario is valid)
+        float total_squared_error <- 0.0;
+        float max_chemical <- max(cells collect each.chemical);
+        if (max_chemical = 0.0) { max_chemical <- 1.0; }
 
-    	float threshold <- 0.1;
+        ask cells {
+            //Normalize
+            float chemical_norm <- self.chemical / max_chemical;
+            
+            float analytical_raw <- world.get_analytical_value(self.location, cycle);
+            float analytical_norm <- analytical_raw / max_chemical;
+            
+            //OOB
+            if (analytical_norm > 1.0) { analytical_norm <- 1.0; }
+            
+            total_squared_error <- total_squared_error + ((chemical_norm - analytical_norm) ^ 2);
+        }
+        global_mse <- total_squared_error / (grid_size * grid_size);
 
-    	float axis_radius <- 0.0;
-    	float diag_radius <- 0.0;
+        //Anisotropy & Circularity
+        if (scenario_type = "Center") {
+            int mid_x <- int(grid_size / 2); 
+            int mid_y <- int(grid_size / 2);
+            float threshold <- 0.1;
+            list<float> radii <- [];
+            
+            list<int> dx <- [1, 1, 0, -1, -1, -1, 0, 1];
+            list<int> dy <- [0, 1, 1, 1, 0, -1, -1, -1];
 
-    	// ---- X AXIS ----
-    	loop i from: 0 to: grid_size {
+            loop d from: 0 to: 7 {
+                int x <- mid_x; 
+                int y <- mid_y;
+                float last_valid <- 0.0; 
+                int i <- 0;
+                
+                loop while: (x >= 0 and x < grid_size and y >= 0 and y < grid_size) {
+                    cells c <- cells grid_at {x, y};
+                    if (c.chemical >= threshold) { 
+                        last_valid <- float(i); 
+                    } else { 
+                        break; 
+                    }
+                    i <- i + 1; 
+                    x <- mid_x + (dx[d] * i); 
+                    y <- mid_y + (dy[d] * i);
+                }
+                
+                // Corrección métrica para las componentes diagonales de la malla de Moore
+                float scale <- ((dx[d] != 0) and (dy[d] != 0)) ? sqrt(2.0) : 1.0;
+                radii <- radii + (last_valid * scale);
+            }
 
-        	if (mid_x + i >= grid_size) {
-            	break;
-        	}
+            float mean_r <- mean(radii);
+            float sd_r <- standard_deviation(radii);
+            
+            global_anisotropy <- (mean_r > 0) ? (sd_r / mean_r) : 0.0;
+            global_maxmin_ratio <- (min(radii) > 0) ? (max(radii) / min(radii)) : 1.0;
 
-        	cells c <- cells grid_at {mid_x + i, mid_y};
+            //CIRCULARITY Correc.
+            int area_cells <- cells count (each.chemical >= threshold);
+            int perimeter_cells <- cells count ((each.chemical >= threshold) and not empty(each.neighbors where (each.chemical < threshold)));
+            
+            if (perimeter_cells > 0) {
+                global_circularity <- (4.0 * #pi * area_cells) / (perimeter_cells ^ 2);
+            }
+        } else {
+            write ">>> Escenario periférico detectado (" + scenario_type + "). Para evitar artefactos numéricos, la anisotropía geométrica se asume ideal para el transporte, reportando el MSE local.";
+        }
 
-        	if (c.chemical >= threshold) {
-            	axis_radius <- i;
-        	} else {
-            	break;
-        	}
-    	}
+        write "***************************************************";
+        write "MÉTRICAS DEL ENTORNO COMPUTADAS (Ciclo " + cycle + ")";
+        write "Modo de Difusión: " + diffusion_mode;
+        write "Escenario Activo: " + scenario_type;
+        write "Tasa de Difusión (Delta t): " + diffusion_rate;
+        write "Anisotropía: " + global_anisotropy;
+        write "Ratio Max/Min: " + global_maxmin_ratio;
+        write "Circularidad: " + global_circularity;
+        write "Error Numérico MSE: " + global_mse;
+        write "***************************************************";
+    }
+    
+    
+    //Optimal Diff rate experiment
+    reflex save_batch_data_to_csv when: (anisotropy_test and cycle >= 300) {
 
-    	//Trigger only when axis has reached desired distance
-    	if (axis_radius >= 50) {
-
-        	// ---- 45° DIAGONAL ----
-        	loop i from: 0 to: grid_size {
-
-            	if (mid_x + i >= grid_size or mid_y + i >= grid_size) {
-                	break;
-            	}
-
-            	cells c <- cells grid_at {mid_x + i, mid_y + i};
-
-            	if (c.chemical >= threshold) {
-                	diag_radius <- sqrt(2.0) * i;
-            	} else {
-                	break;
-            	}
-        	}
-
-        float ratio <- diag_radius / axis_radius;
-
-        	write "****************************************";
-        	write "Mode: " + diffusion_mode;
-        	write "Cycle: " + cycle;
-        	write "Axis radius: " + axis_radius;
-        	write "Diagonal radius: " + diag_radius;
-        	write "Diag/Axis ratio: " + ratio;
-        	write "****************************************";
-
-        	ask world { do pause; }
-    	}
-	}
+      string export_path <- "../includes/optimal_vals_diff";
+      list row <- [
+      	string(diffusion_mode), 
+        float(diffusion_rate), 
+        float(global_mse), 
+        float(global_anisotropy), 
+       	float(global_circularity), 
+        float(global_maxmin_ratio)
+      ];
+            
+      if (not file_exists(export_path + ".csv")) {
+            list headers <- ["Mode", "Rate", "MSE", "Anisotropy", "Circularity", "MaxMinRatio"];
+            save [headers, row] to: export_path + ".csv" rewrite: false;
+      }else {
+            save [row] to: export_path + ".csv" rewrite: false;
+      }
+       
+      write "Registro guardado en: " + export_path;
+      
+      //do die;
+    }	
 	
-	reflex anisotropy_test when: (anisotropy_test and cycle = 200) {
-
-    	int mid_x <- int(grid_size / 2);
-    	int mid_y <- int(grid_size / 2);
-
-    	float threshold <- 0.1;
-
-    	list<float> radii <- [];
-
-    	//Direction vectors (8 directions)
-    	list<int> dx <- [1, 1, 0, -1, -1, -1, 0, 1];
-    	list<int> dy <- [0, 1, 1, 1, 0, -1, -1, -1];
-
-    	loop d from: 0 to: 7 {
-
-        	int x <- mid_x;
-        	int y <- mid_y;
-        	float last_valid <- 0.0;
-        	int i <- 0;
-
-        	loop while: (x >= 0 and x < grid_size and y >= 0 and y < grid_size) {
-
-            	cells c <- cells grid_at {x, y};
-
-            	if (c.chemical >= threshold) {
-                	last_valid <- i;
-            	} else {
-                	break;
-            	}
-
-            	i <- i + 1;
-            	x <- mid_x + dx[d] * i;
-            	y <- mid_y + dy[d] * i;
-        	}
-
-        	//Normalize diagonal distances
-        	float scale <- 1.0;
-        	if (dx[d] != 0 and dy[d] != 0) {
-            	scale <- sqrt(2.0);
-        	}
-
-        	radii <- radii + (last_valid * scale);
-    	}
-
-    	float mean_r <- mean(radii);
-    	float sd_r <- standard_deviation(radii);
-
-    	float anisotropy <- sd_r / mean_r;
-    	float maxmin <- max(radii) / min(radii);
-
-    	write "******************************";
-    	write "Mode: " + diffusion_mode;
-    	write "Cycle: " + cycle;
-    	write "Mean radius: " + mean_r;
-    	write "Std anisotropy: " + anisotropy;
-    	write "Max/Min ratio: " + maxmin;
-    	write "*******************************";
-
-    	ask world { do pause; }
-	}
 } 
 
 // -----------------------------------------------------------------
@@ -609,4 +666,17 @@ experiment MainExperimentNetDiff type: gui {
         monitor "Hormigas con éxito" value: length(travel_times);
         monitor "Tiempo Promedio (Ciclos)" value: avg_travel_time;
     }
+}
+
+
+// ----------------- SWEEP FOR OPTIMAL PARAMETER CALC -----------------------------------------------
+
+experiment OptimizationSweep type: batch repeat: 1 keep_seed: true until: (cycle = 301) {
+    
+    parameter var: scenario_type init: "Center";
+    parameter var: diffusion_rounds init: 300;
+    parameter var: anisotropy_test init: true;
+    
+    parameter var: diffusion_mode among: ["Standard", "Gaussian", "Laplacian-Nine_Point"];
+    parameter var: diffusion_rate among: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70];
 }

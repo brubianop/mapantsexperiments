@@ -27,10 +27,18 @@ species ant skills: [moving] {
     int start_cycle <- 0;
     int time_to_food <- 0;
     
+    //Tortuosity stuff
+    float distance_traveled <- 0.0;
+    point previous_location <- nil;
+    point initial_location <- {50,50};
+    
     
     // Al activarse, grabamos el ciclo de inicio
     reflex start_timer when: active and start_cycle = 0 {
         start_cycle <- cycle;
+        
+        previous_location <- location;
+        distance_traveled <- 0.0;
     }
     
     // El agente detecta la celda sobre la que está parado
@@ -111,6 +119,13 @@ species ant skills: [moving] {
 	        
 	       do goto target: target_cell;
 		}
+		
+		//Check
+		if (previous_location != nil) {
+            distance_traveled <- distance_traveled + (location distance_to previous_location);
+        }
+        previous_location <- location; 
+        
 		cells new_patch <- cells(location);
 		if (new_patch != nil) {
 	        	
@@ -123,9 +138,19 @@ species ant skills: [moving] {
 				        // Calculamos el tiempo de este viaje específico			        		           
 			            int trip_duration <- cycle - start_cycle;
 			            
+			            // --- NUEVO: CALCULAR TORTUOSIDAD ---
+                    float ideal_distance <- initial_location distance_to new_patch.location;
+                    float tortuosity_agent <- 1.0;
+                    
+                    if (ideal_distance > 0) {
+                        tortuosity_agent <- distance_traveled / ideal_distance;
+                    }
+                    // ------------------------------------
+                    
 			            // Enviamos el dato al global
 			            ask world { 
-			                do register_success(trip_duration); 
+			                do register_success(trip_duration);
+			                do register_agent_metrics(trip_duration, tortuosity_agent); 
 			            }
 			            
 			            // Ponemos el cronómetro en -1 para indicar que el viaje de "ida" terminó
@@ -171,6 +196,9 @@ species ant skills: [moving] {
         if (my_cell.is_nest) {
         	start_cycle <- cycle;
             has_food <- false;
+            
+            distance_traveled <- 0.0;
+            previous_location <- location;
         }
     }
 

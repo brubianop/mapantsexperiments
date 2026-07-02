@@ -1,0 +1,106 @@
+C:\Users\k\Documents\General\UN\UT\Experiments\mapantsexperiments\mapexploration>python optimal_vals.py
+
+=================================================================
+MÉTODO: Gaussian
+=================================================================
+
+[ÓPTIMO GEOMÉTRICO - ANISOTROPÍA]
+Tasa Óptima: 0.70
+Anisotropía: 0.0009
+Circularidad: 0.6239
+MSE: 0.002383
+-----------------------------------------------------------------
+
+[ÓPTIMO NUMÉRICO - MSE]
+Tasa Óptima: 0.10
+Anisotropía: 0.0106
+Circularidad: 0.6890
+MSE: 0.000384
+-----------------------------------------------------------------
+
+[ÓPTIMO GEOMÉTRICO - CIRCULARIDAD]
+Tasa Óptima: 0.10
+Anisotropía: 0.0106
+Circularidad: 0.6890
+MSE: 0.000384
+-----------------------------------------------------------------
+
+=================================================================
+MÉTODO: Laplacian-Nine_Point
+=================================================================
+
+[ÓPTIMO GEOMÉTRICO - ANISOTROPÍA]
+Tasa Óptima: 0.30
+Anisotropía: 0.0018
+Circularidad: 0.6317
+MSE: 0.005920
+-----------------------------------------------------------------
+
+[ÓPTIMO NUMÉRICO - MSE]
+Tasa Óptima: 0.10
+Anisotropía: 0.0106
+Circularidad: 0.6277
+MSE: 0.001333
+-----------------------------------------------------------------
+
+[ÓPTIMO GEOMÉTRICO - CIRCULARIDAD]
+Tasa Óptima: 0.35
+Anisotropía: 0.0303
+Circularidad: 0.7694
+MSE: 0.006528
+-----------------------------------------------------------------
+
+=================================================================
+MÉTODO: Standard
+=================================================================
+
+[ÓPTIMO GEOMÉTRICO - ANISOTROPÍA]
+Tasa Óptima: 0.70
+Anisotropía: 0.0001
+Circularidad: 0.6299
+MSE: 0.003846
+-----------------------------------------------------------------
+
+[ÓPTIMO NUMÉRICO - MSE]
+Tasa Óptima: 0.10
+Anisotropía: 0.0141
+Circularidad: 0.6542
+MSE: 0.000463
+-----------------------------------------------------------------
+
+[ÓPTIMO GEOMÉTRICO - CIRCULARIDAD]
+Tasa Óptima: 0.15
+Anisotropía: 0.0206
+Circularidad: 0.6728
+MSE: 0.000646
+-----------------------------------------------------------------
+
+=================================================================
+=== ÓPTIMO MULTICRITERIO (ROBUSTO) ===
+=================================================================
+
+MÉTODO: Gaussian
+Rate Óptimo:        0.10
+MSE:               0.000384
+Anisotropía:       0.0106
+Circularidad:      0.6890
+SCORE GLOBAL:      0.7359
+-----------------------------------------------------------------
+
+MÉTODO: Laplacian-Nine_Point
+Rate Óptimo:        0.35
+MSE:               0.006528
+Anisotropía:       0.0303
+Circularidad:      0.7694
+SCORE GLOBAL:      0.1663
+-----------------------------------------------------------------
+
+MÉTODO: Standard
+Rate Óptimo:        0.30
+MSE:               0.001252
+Anisotropía:       0.0024
+Circularidad:      0.6402
+SCORE GLOBAL:      0.9944
+-----------------------------------------------------------------
+
+>>> FIN. <<<
