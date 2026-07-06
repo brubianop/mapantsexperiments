@@ -96,26 +96,21 @@ global {
         
         //25 sample
         if (length(travel_times) >= 25) {
-            string file_path <- "../includes/results_cpv";
+            string file_path <- "../includes/results_agents";
             list row <- [
                 diffusion_mode, 
                 scenario_type, 
-                diffusion_rate, 
-                global_anisotropy, 
-                global_maxmin_ratio, 
-                global_circularity, 
-                global_mse, 
                 mean(travel_times), 
                 mean(registered_tortuosities)
             ];
             
             if (not file_exists(file_path)) {
-            	save [["Mode", "Scenario", "Rate", "Anisotropy", "MaxMinRatio", "Circularity", "MSE", "TiempoPromedio", "TortuosityPromedio"], row] to: file_path rewrite: false;
+            	save [["Mode", "Scenario", "TiempoPromedio", "TortuosityPromedio"], row] to: file_path + ".csv" rewrite: false;
         	}else {
-            	save [row] to: file_path rewrite: false;
+            	save [row] to: file_path + ".csv" rewrite: false;
         	}
         	
-            write ">>> ¡MÉTRICAS DEL EXPERIMENTO EXPORTADAS EXITOSAMENTE EN: " + file_path + " <<<";
+            write ">>> ¡MÉTRICAS DE AGENTES EN: " + file_path + " <<<";
             do pause; 
         }
     }
@@ -124,7 +119,7 @@ global {
      
     geometry shape <- square(grid_size);
     
-    int ants_number <- 30;
+    int ants_number <- 50;
     
 	// Parámetro para elegir el escenario desde la interfaz
     string scenario_type <- "Cross" among: ["Center", "North", "Cross", "Circle", "Xcross", "Diagonal", "Ortho-Diag"];
@@ -373,7 +368,7 @@ global {
     	if (diffusion_mode = "Laplacian-Nine_Point" or diffusion_mode = "Laplacian-Weighted-Nine_Point") {
 
         	if (diffusion_rate > 0.3) {
-            	diffusion_rate_warning <- "Above ~0.3 may introduce instability/artifacts";
+            	diffusion_rate_warning <- "Above ~0.33 may introduce instability/artifacts";
         	} else if (diffusion_rate < 0.1) {
             	diffusion_rate_warning <- "Very stable but slow diffusion";
         	} else {

@@ -55,6 +55,7 @@ species ant skills: [moving] {
             do wander; // Intentar moverse para volver a entrar
             return;    // Detener la ejecución de este reflex por este ciclo
         }
+       
     	
     	if (movement_alg = "random"){ //random movement
     		do wander amplitude: 90.0;    		
@@ -130,15 +131,15 @@ species ant skills: [moving] {
 		if (new_patch != nil) {
 	        	
 	        
-	            // Verificar si encontramos comida
+	            
 	            if (new_patch.food > 0) {
 	                has_food <- true;
 	                
-	                if(start_cycle != 0){
-				        // Calculamos el tiempo de este viaje específico			        		           
+	                if(start_cycle != 0 and start_cycle != -1){
+				        			        		           
 			            int trip_duration <- cycle - start_cycle;
 			            
-			            // --- NUEVO: CALCULAR TORTUOSIDAD ---
+			            // --- TORTUOSIDAD ---
                     float ideal_distance <- initial_location distance_to new_patch.location;
                     float tortuosity_agent <- 1.0;
                     
@@ -158,7 +159,7 @@ species ant skills: [moving] {
 		            }
 	                
 	                heading <- heading + 180; // Darse la vuelta
-	                
+	                return;
 	                // Opcional: Consumir comida
 	                // target_cell.food <- target_cell.food - 1.0;
 	            }
@@ -183,15 +184,20 @@ species ant skills: [moving] {
             return; 
         }
         
-        list<cells> valid_neighbors <- my_cell.neighbors where (each != nil);
+        list<cells> valid_neighbors <- my_current_cell.neighbors where (each != nil);
 		if (empty(valid_neighbors)) {
             do wander amplitude: 45.0;
-        }else {                
-	        cells next_step <- valid_neighbors with_max_of (each.nest_scent);
+        }else {
+        	
+        	if (flip(0.10)) {
+        		do wander amplitude: 60.0;
+        	} else  {             
+	        	cells next_step <- valid_neighbors with_max_of (each.nest_scent);
 	        
-	        if (next_step != nil) {
-	            do goto target: next_step;
-	        }	
+	        	if (next_step != nil) {
+	            	do goto target: next_step;
+	        	}	
+	        }
 		}
         if (my_cell.is_nest) {
         	start_cycle <- cycle;
